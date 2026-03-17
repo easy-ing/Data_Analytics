@@ -1,16 +1,20 @@
 # 사용자 행동 로그 기반 콘텐츠 분석 시스템
 
-네이버 Analytics Engineer 인턴 자소서에서 다음 3가지 역량을 한 번에 보여주기 위한 프로젝트입니다.
-- 데이터 기반 문제 해결 경험
+사용자 행동 로그를 기반으로 콘텐츠 성과를 분석하는 데이터 파이프라인 프로젝트입니다.  
+네이버 Analytics Engineer 인턴 지원을 위해 아래 역량을 보여주는 데 초점을 맞췄습니다.
+
+- 데이터 기반 문제 해결
 - SQL 분석 역량
-- 데이터 모델링 경험
+- 데이터 모델링(fact/dimension) 역량
 
-## 프로젝트 목적
-콘텐츠 서비스에서 발생하는 사용자 행동 로그(노출, 클릭, 체류, 반응)를 구조적으로 수집하고,
-PostgreSQL 기반 분석 모델로 전환해 KPI를 계산한 뒤,
-실제 개선 가능한 인사이트까지 도출하는 end-to-end 분석 시스템을 구현합니다.
+## 프로젝트 개요
+이 프로젝트는 이벤트 로그를 생성하고(PostgreSQL 적재), 차원/팩트 모델로 분석 가능한 형태로 구성한 뒤, 실무형 SQL로 KPI를 도출합니다.
 
-## 전체 폴더 구조
+- 데이터 규모(더미): 사용자 2,000명 / 콘텐츠 500개 / 이벤트 100,000건
+- 이벤트 타입: `view`, `click`, `like`, `share`
+- 특징: 카테고리별 클릭률/체류시간 분포를 다르게 설계
+
+## 프로젝트 구조
 ```text
 naver-content-analytics/
 ├─ backend/
@@ -19,52 +23,48 @@ naver-content-analytics/
 ├─ data/
 │  ├─ raw/
 │  └─ processed/
-├─ sql/
-│  ├─ 01_schema.sql
-│  └─ 02_kpi_queries.sql
-├─ etl/
-│  ├─ generate_sample_logs.py
-│  ├─ load_to_postgres.py
-│  └─ build_mart.py
 ├─ docs/
+│  ├─ data_dictionary.md
 │  ├─ folder_roles.md
 │  └─ project_flow.md
+├─ etl/
+│  ├─ build_mart.py
+│  ├─ generate_dummy_data.py
+│  ├─ generate_sample_logs.py
+│  ├─ load_csv_to_postgres.py
+│  └─ load_to_postgres.py
+├─ sql/
+│  ├─ 01_schema.sql
+│  ├─ 02_kpi_queries.sql
+│  ├─ 03_dw_schema.sql
+│  └─ 04_advanced_analytics.sql
 ├─ .env.example
+├─ .gitignore
 ├─ docker-compose.yml
 ├─ Makefile
 ├─ requirements.txt
 └─ README.md
 ```
 
-## 폴더 역할
-- `backend/`: 이벤트 수집 API와 지표 조회 API
-- `data/`: 원천/가공 데이터 저장
-- `sql/`: 스키마 및 KPI 쿼리 관리
-- `etl/`: 배치 파이프라인(생성, 적재, 마트 빌드)
-- `docs/`: 구조/흐름/자소서 연결 문서
+## 데이터 모델 (Star Schema)
+- `analytics.dim_users`: 사용자 차원
+- `analytics.dim_contents`: 콘텐츠 차원
+- `analytics.dim_event_types`: 이벤트 타입 차원
+- `analytics.fact_events`: 행동 이벤트 팩트(월별 range partition)
+- `analytics.mart_content_daily`: 일별 콘텐츠 KPI 마트
 
-## 프로젝트 흐름
-1. 데이터 수집
-- 샘플 로그 생성 스크립트(`etl/generate_sample_logs.py`) 또는 API(`/events`)로 이벤트 확보
+왜 이 구조를 선택했는가:
+- 차원/팩트 분리로 지표 정의를 일관되게 유지
+- 대용량 이벤트는 파티션 + 인덱스로 조회 성능 확보
+- 반복 KPI는 마트 테이블로 사전 집계해 분석 효율 개선
 
-2. 데이터 저장
-- 원천 로그를 `data/raw`에 저장
-- PostgreSQL `analytics` 스키마의 차원/팩트 테이블로 적재
-
-3. 데이터 분석
-- `mart_content_daily` 집계 테이블 생성
-- KPI SQL 실행(DAU, CTR, 평균 체류시간, 7일 재방문율, 카테고리별 인기 콘텐츠)
-
-4. 인사이트 도출
-- 지표 기반으로 추천 효율, 카테고리별 성과, 리텐션 개선 포인트 정의
-
-## 빠른 실행 가이드
+## 실행 방법
 ### 1) PostgreSQL 실행
 ```bash
 docker compose up -d
 ```
 
-### 2) 가상환경 및 패키지 설치
+### 2) 환경 준비
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -72,32 +72,53 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### 3) 스키마 생성
+### 3) DW 스키마 생성
 ```bash
-psql -h localhost -p 5432 -U postgres -d analytics -f sql/01_schema.sql
+psql -h localhost -p 5432 -U postgres -d analytics -f sql/03_dw_schema.sql
 ```
 
-### 4) 샘플 로그 생성 및 적재
+### 4) 더미 데이터 생성
 ```bash
-python etl/generate_sample_logs.py
-python etl/load_to_postgres.py
-python etl/build_mart.py
+python etl/generate_dummy_data.py --seed 20260317 --output-dir data/raw
 ```
 
-### 5) KPI 분석
+### 5) CSV -> PostgreSQL ETL 적재
+```bash
+python etl/load_to_postgres.py --raw-dir data/raw
+```
+
+`load_to_postgres.py`는 표준 적재 스크립트 `load_csv_to_postgres.py`를 호출하는 단일 진입점입니다.
+
+### 6) 분석 SQL 실행
+기본 KPI:
 ```bash
 psql -h localhost -p 5432 -U postgres -d analytics -f sql/02_kpi_queries.sql
 ```
 
-### 6) API 실행 (선택)
+고급 분석:
+```bash
+psql -h localhost -p 5432 -U postgres -d analytics -f sql/04_advanced_analytics.sql
+```
+
+## 포함된 주요 분석
+`sql/04_advanced_analytics.sql` 기준:
+- DAU
+- CTR
+- 평균 체류시간
+- 7일 재방문율
+- 카테고리별 인기 콘텐츠 TOP 10
+- 사용자별 평균 활동량
+- 이탈률 추정(7일 + 롤링)
+
+## API (선택)
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
-- Health check: `GET /health`
-- Event ingest: `POST /events`
-- DAU 조회: `GET /insights/dau`
+- `GET /health`
+- `POST /events`
+- `GET /insights/dau`
 
-## 자소서 연결 방법
-- 데이터 기반 문제 해결 경험: "콘텐츠 소비 저하" 문제를 가정하고, 이벤트 설계부터 KPI 정의/분석/개선안 제시까지 수행
-- SQL 분석 역량: CTE, FILTER, 윈도우 함수, NULLIF 등 실무형 SQL로 KPI 설계
-- 데이터 모델링 경험: `dim_users`, `dim_content`, `fact_user_events`, `mart_content_daily` 분리 모델 적용
+## 자소서 연결 포인트
+- 지원동기/문제해결: 문제 정의 -> 지표 설계 -> 개선 방향 도출 흐름
+- SQL 역량: CTE, JOIN, FILTER, WINDOW FUNCTION 기반 분석 쿼리
+- 데이터 모델링: fact/dimension + mart + partition 설계
