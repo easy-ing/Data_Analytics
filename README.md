@@ -110,15 +110,10 @@ psql -h localhost -p 5432 -U postgres -d analytics -f sql/04_advanced_analytics.
 - 사용자별 평균 활동량
 - 이탈률 추정(7일 + 롤링)
 
-## API (선택)
+## API
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
 - `GET /health`
 - `POST /events`
 - `GET /insights/dau`
-
-## 자소서 연결 포인트
-- 지원동기/문제해결: 문제 정의 -> 지표 설계 -> 개선 방향 도출 흐름
-- SQL 역량: CTE, JOIN, FILTER, WINDOW FUNCTION 기반 분석 쿼리
-- 데이터 모델링: fact/dimension + mart + partition 설계
