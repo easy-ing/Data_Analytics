@@ -18,41 +18,61 @@ engine = create_engine(f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}
 sql = """
 INSERT INTO analytics.mart_content_daily (
     stat_date,
-    content_id,
+    content_sk,
     impressions,
     clicks,
-    unique_viewers,
+    unique_users,
+    view_completions,
+    likes,
+    comments,
+    shares,
+    bookmarks,
     avg_dwell_seconds,
     ctr,
     engagement_rate
 )
 SELECT
-    e.event_date,
-    e.content_id,
-    COUNT(*) FILTER (WHERE e.event_type = 'impression') AS impressions,
-    COUNT(*) FILTER (WHERE e.event_type = 'click') AS clicks,
-    COUNT(DISTINCT CASE WHEN e.event_type IN ('click', 'view_start', 'view_end') THEN e.user_id END) AS unique_viewers,
-    ROUND(AVG(NULLIF(e.dwell_seconds, 0))::NUMERIC, 2) AS avg_dwell_seconds,
+    f.event_date AS stat_date,
+    f.content_sk,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'impression') AS impressions,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'click') AS clicks,
+    COUNT(DISTINCT f.user_id) AS unique_users,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'view_end') AS view_completions,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'like') AS likes,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'comment') AS comments,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'share') AS shares,
+    COUNT(*) FILTER (WHERE et.event_type_code = 'bookmark') AS bookmarks,
+    ROUND(AVG(NULLIF(f.dwell_seconds, 0))::NUMERIC, 2) AS avg_dwell_seconds,
     ROUND(
-        COUNT(*) FILTER (WHERE e.event_type = 'click')::NUMERIC /
-        NULLIF(COUNT(*) FILTER (WHERE e.event_type = 'impression'), 0),
+        COUNT(*) FILTER (WHERE et.event_type_code = 'click')::NUMERIC /
+        NULLIF(COUNT(*) FILTER (WHERE et.event_type_code = 'impression'), 0),
         4
     ) AS ctr,
     ROUND(
-        COUNT(*) FILTER (WHERE e.event_type IN ('like', 'comment', 'share', 'bookmark'))::NUMERIC /
-        NULLIF(COUNT(*) FILTER (WHERE e.event_type = 'click'), 0),
+        (
+            COUNT(*) FILTER (WHERE et.event_type_code IN ('like', 'comment', 'share', 'bookmark'))
+        )::NUMERIC /
+        NULLIF(COUNT(*) FILTER (WHERE et.event_type_code = 'click'), 0),
         4
     ) AS engagement_rate
-FROM analytics.fact_user_events e
-GROUP BY e.event_date, e.content_id
-ON CONFLICT (stat_date, content_id)
+FROM analytics.fact_events f
+JOIN analytics.dim_event_types et
+  ON f.event_type_sk = et.event_type_sk
+GROUP BY f.event_date, f.content_sk
+ON CONFLICT (stat_date, content_sk)
 DO UPDATE SET
     impressions = EXCLUDED.impressions,
     clicks = EXCLUDED.clicks,
-    unique_viewers = EXCLUDED.unique_viewers,
+    unique_users = EXCLUDED.unique_users,
+    view_completions = EXCLUDED.view_completions,
+    likes = EXCLUDED.likes,
+    comments = EXCLUDED.comments,
+    shares = EXCLUDED.shares,
+    bookmarks = EXCLUDED.bookmarks,
     avg_dwell_seconds = EXCLUDED.avg_dwell_seconds,
     ctr = EXCLUDED.ctr,
-    engagement_rate = EXCLUDED.engagement_rate;
+    engagement_rate = EXCLUDED.engagement_rate,
+    updated_at = NOW();
 """
 
 with engine.begin() as conn:

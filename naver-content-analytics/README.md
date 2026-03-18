@@ -1,65 +1,42 @@
 # 사용자 행동 로그 기반 콘텐츠 분석 시스템
 
-사용자 행동 로그를 기반으로 콘텐츠 성과를 분석하는 데이터 파이프라인 프로젝트입니다.  
-네이버 Analytics Engineer 인턴 지원을 위해 아래 역량을 보여주는 데 초점을 맞췄습니다.
+사용자 행동 로그를 수집/적재/집계하여 콘텐츠 KPI를 분석하는 PostgreSQL 기반 데이터 파이프라인 프로젝트입니다.
 
-- 데이터 기반 문제 해결
-- SQL 분석 역량
-- 데이터 모델링(fact/dimension) 역량
+## 프로젝트 범위
+- 데이터 생성: 더미 사용자/콘텐츠/이벤트 데이터 생성
+- ETL: CSV -> DW 스키마 적재(차원 업서트 + 팩트 적재)
+- 모델링: Star Schema + 일자 단위 마트
+- 분석: KPI/고급 분석 SQL 제공
+- API(선택): 이벤트 수집 및 DAU 조회
 
-## 프로젝트 개요
-이 프로젝트는 이벤트 로그를 생성하고(PostgreSQL 적재), 차원/팩트 모델로 분석 가능한 형태로 구성한 뒤, 실무형 SQL로 KPI를 도출합니다.
-
-- 데이터 규모(더미): 사용자 2,000명 / 콘텐츠 500개 / 이벤트 100,000건
-- 이벤트 타입: `view`, `click`, `like`, `share`
-- 특징: 카테고리별 클릭률/체류시간 분포를 다르게 설계
-
-## 프로젝트 구조
+## 폴더 구조
 ```text
 naver-content-analytics/
 ├─ backend/
-│  ├─ __init__.py
-│  └─ main.py
 ├─ data/
-│  ├─ raw/
-│  └─ processed/
+│  └─ raw/
 ├─ docs/
+│  ├─ api_spec.md
 │  ├─ data_dictionary.md
+│  ├─ env_spec.md
 │  ├─ folder_roles.md
-│  └─ project_flow.md
+│  ├─ project_flow.md
+│  └─ runbook.md
 ├─ etl/
-│  ├─ build_mart.py
-│  ├─ generate_dummy_data.py
-│  ├─ generate_sample_logs.py
-│  ├─ load_csv_to_postgres.py
-│  └─ load_to_postgres.py
 ├─ sql/
-│  ├─ 01_schema.sql
-│  ├─ 02_kpi_queries.sql
-│  ├─ 03_dw_schema.sql
+│  ├─ 01_schema.sql         # 레거시 단순 스키마(참고)
+│  ├─ 02_kpi_queries.sql    # 기본 KPI (DW 기준)
+│  ├─ 03_dw_schema.sql      # 메인 DW 스키마
 │  └─ 04_advanced_analytics.sql
 ├─ .env.example
-├─ .gitignore
 ├─ docker-compose.yml
 ├─ Makefile
 ├─ requirements.txt
-└─ README.md
+└─ CHANGELOG.md
 ```
 
-## 데이터 모델 (Star Schema)
-- `analytics.dim_users`: 사용자 차원
-- `analytics.dim_contents`: 콘텐츠 차원
-- `analytics.dim_event_types`: 이벤트 타입 차원
-- `analytics.fact_events`: 행동 이벤트 팩트(월별 range partition)
-- `analytics.mart_content_daily`: 일별 콘텐츠 KPI 마트
-
-왜 이 구조를 선택했는가:
-- 차원/팩트 분리로 지표 정의를 일관되게 유지
-- 대용량 이벤트는 파티션 + 인덱스로 조회 성능 확보
-- 반복 KPI는 마트 테이블로 사전 집계해 분석 효율 개선
-
-## 실행 방법
-### 1) PostgreSQL 실행
+## 실행 순서 (권장)
+### 1) DB 실행
 ```bash
 docker compose up -d
 ```
@@ -82,43 +59,53 @@ psql -h localhost -p 5432 -U postgres -d analytics -f sql/03_dw_schema.sql
 python etl/generate_dummy_data.py --seed 20260317 --output-dir data/raw
 ```
 
-### 5) CSV -> PostgreSQL ETL 적재
+### 5) ETL 적재
 ```bash
 python etl/load_to_postgres.py --raw-dir data/raw
 ```
 
-`load_to_postgres.py`는 표준 적재 스크립트 `load_csv_to_postgres.py`를 호출하는 단일 진입점입니다.
-
-### 6) 분석 SQL 실행
-기본 KPI:
+### 6) 마트 집계
 ```bash
-psql -h localhost -p 5432 -U postgres -d analytics -f sql/02_kpi_queries.sql
+python etl/build_mart.py
 ```
 
-고급 분석:
+### 7) KPI 분석
 ```bash
+psql -h localhost -p 5432 -U postgres -d analytics -f sql/02_kpi_queries.sql
 psql -h localhost -p 5432 -U postgres -d analytics -f sql/04_advanced_analytics.sql
 ```
 
-## 포함된 주요 분석
-`sql/04_advanced_analytics.sql` 기준:
-- DAU
-- CTR
-- 평균 체류시간
-- 7일 재방문율
-- 카테고리별 인기 콘텐츠 TOP 10
-- 사용자별 평균 활동량
-- 이탈률 추정(7일 + 롤링)
+## 핵심 테이블
+- `analytics.dim_users`
+- `analytics.dim_contents`
+- `analytics.dim_event_types`
+- `analytics.fact_events` (월 단위 Range Partition)
+- `analytics.mart_content_daily`
+
+자세한 스키마는 `docs/data_dictionary.md`를 참고하세요.
+
+## 환경변수
+자세한 명세는 `docs/env_spec.md`를 참고하세요.
+
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
 
 ## API (선택)
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
+
 - `GET /health`
 - `POST /events`
 - `GET /insights/dau`
 
-## 자소서 연결 포인트
-- 지원동기/문제해결: 문제 정의 -> 지표 설계 -> 개선 방향 도출 흐름
-- SQL 역량: CTE, JOIN, FILTER, WINDOW FUNCTION 기반 분석 쿼리
-- 데이터 모델링: fact/dimension + mart + partition 설계
+요청/응답 예시는 `docs/api_spec.md`를 참고하세요.
+
+## 문서
+- 실행/검증 가이드: `docs/runbook.md`
+- 프로젝트 흐름: `docs/project_flow.md`
+- 데이터 사전: `docs/data_dictionary.md`
+- 변경 이력: `CHANGELOG.md`

@@ -1,16 +1,30 @@
 # 프로젝트 흐름
 
-1. 데이터 수집
-- `backend/main.py`의 `/events` API 또는 `etl/generate_sample_logs.py`를 통해 사용자 행동 로그를 생성/수집한다.
+## 1) 데이터 준비
+- `etl/generate_dummy_data.py`로 샘플 CSV(`data/raw/users.csv`, `contents.csv`, `events.csv`)를 생성한다.
+- 이미 보유한 원천 데이터가 있으면 동일 스키마로 `data/raw/`에 배치한다.
 
-2. 데이터 저장
-- 원천 데이터는 `data/raw/*.csv`로 저장한다.
-- PostgreSQL의 `analytics.fact_user_events`와 차원 테이블(`dim_users`, `dim_content`)로 적재한다.
+## 2) DW 스키마 구성
+- `sql/03_dw_schema.sql` 실행으로 스타 스키마를 생성한다.
+- 핵심 테이블: `dim_users`, `dim_contents`, `dim_event_types`, `fact_events`, `mart_content_daily`.
 
-3. 데이터 분석
-- `etl/build_mart.py`를 통해 `mart_content_daily`를 생성한다.
-- `sql/02_kpi_queries.sql`로 DAU, CTR, 평균 체류시간, 7일 재방문율, 카테고리별 인기 콘텐츠를 분석한다.
+## 3) ETL 적재
+- `etl/load_to_postgres.py`(= `load_csv_to_postgres.py` 진입점) 실행.
+- 처리 순서:
+  1. CSV 로드/전처리
+  2. `dim_users`, `dim_contents` 업서트
+  3. `dim_event_types` 보정
+  4. 월 단위 `fact_events` 파티션 자동 생성
+  5. `fact_events` 적재
 
-4. 인사이트 도출
-- 지표 결과를 기반으로 추천 품질, 콘텐츠 몰입도, 카테고리 전략 개선 인사이트를 도출한다.
-- 자소서에서는 "문제 정의 -> 지표 설계 -> 모델링 -> 개선 제안" 흐름으로 연결한다.
+## 4) 마트 집계
+- `etl/build_mart.py` 실행으로 `mart_content_daily`를 upsert한다.
+- 산출 지표: 노출/클릭/유니크유저/완주/참여지표/CTR/Engagement Rate.
+
+## 5) 분석
+- 기본 KPI: `sql/02_kpi_queries.sql`
+- 확장 분석: `sql/04_advanced_analytics.sql`
+
+## 6) API 활용(선택)
+- `backend/main.py`의 `/events`로 단건 이벤트를 수집할 수 있다.
+- `/insights/dau`에서 최근 30일 DAU 조회가 가능하다.

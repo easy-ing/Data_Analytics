@@ -1,41 +1,59 @@
--- DAU: 일간 활성 사용자 규모를 측정해 트래픽 변화를 모니터링
-SELECT event_date, COUNT(DISTINCT user_id) AS dau
-FROM analytics.fact_user_events
-GROUP BY event_date
-ORDER BY event_date;
+-- ==========================================================
+-- Core KPI SQL (PostgreSQL)
+-- Schema: analytics.fact_events, analytics.dim_event_types, analytics.dim_contents
+-- ==========================================================
 
--- CTR: 노출 대비 클릭 전환율을 측정해 추천/배치 품질을 평가
-WITH d AS (
-  SELECT
-    event_date,
-    COUNT(*) FILTER (WHERE event_type = 'impression') AS impressions,
-    COUNT(*) FILTER (WHERE event_type = 'click') AS clicks
-  FROM analytics.fact_user_events
-  GROUP BY event_date
+-- 1) DAU
+SELECT
+    f.event_date,
+    COUNT(DISTINCT f.user_id) AS dau
+FROM analytics.fact_events f
+GROUP BY f.event_date
+ORDER BY f.event_date;
+
+
+-- 2) CTR (impression -> click)
+WITH daily AS (
+    SELECT
+        f.event_date,
+        COUNT(*) FILTER (WHERE et.event_type_code = 'impression') AS impressions,
+        COUNT(*) FILTER (WHERE et.event_type_code = 'click') AS clicks
+    FROM analytics.fact_events f
+    JOIN analytics.dim_event_types et
+      ON f.event_type_sk = et.event_type_sk
+    GROUP BY f.event_date
 )
 SELECT
-  event_date,
-  impressions,
-  clicks,
-  ROUND(clicks::NUMERIC / NULLIF(impressions, 0), 4) AS ctr
-FROM d
+    event_date,
+    impressions,
+    clicks,
+    ROUND(clicks::NUMERIC / NULLIF(impressions, 0), 4) AS ctr
+FROM daily
 ORDER BY event_date;
 
--- 평균 체류시간: 콘텐츠 몰입도를 파악해 품질 개선 우선순위를 설정
+
+-- 3) 평균 체류시간 (view_end 기준)
 SELECT
-  event_date,
-  ROUND(AVG(NULLIF(dwell_seconds, 0))::NUMERIC, 2) AS avg_dwell_seconds
-FROM analytics.fact_user_events
-WHERE event_type = 'view_end'
-GROUP BY event_date
-ORDER BY event_date;
+    f.event_date,
+    ROUND(AVG(NULLIF(f.dwell_seconds, 0))::NUMERIC, 2) AS avg_dwell_seconds
+FROM analytics.fact_events f
+JOIN analytics.dim_event_types et
+  ON f.event_type_sk = et.event_type_sk
+WHERE et.event_type_code = 'view_end'
+GROUP BY f.event_date
+ORDER BY f.event_date;
 
--- 7일 재방문율: 기준일 활성 사용자가 7일 내 재방문하는 비율로 리텐션 확인
+
+-- 4) 7일 재방문율
 WITH daily_users AS (
-  SELECT DISTINCT event_date, user_id
-  FROM analytics.fact_user_events
+  SELECT DISTINCT
+    f.event_date,
+    f.user_id
+  FROM analytics.fact_events f
 ), revisit AS (
-  SELECT a.event_date AS base_date, a.user_id
+  SELECT
+    a.event_date AS base_date,
+    a.user_id
   FROM daily_users a
   WHERE EXISTS (
     SELECT 1
@@ -51,32 +69,51 @@ SELECT
   COUNT(DISTINCT r.user_id) AS revisit_users,
   ROUND(COUNT(DISTINCT r.user_id)::NUMERIC / NULLIF(COUNT(DISTINCT d.user_id), 0), 4) AS revisit_rate_7d
 FROM daily_users d
-LEFT JOIN revisit r ON r.base_date = d.event_date AND r.user_id = d.user_id
+LEFT JOIN revisit r
+  ON r.base_date = d.event_date
+ AND r.user_id = d.user_id
 GROUP BY d.event_date
 ORDER BY d.event_date;
 
--- 카테고리별 인기 콘텐츠: 카테고리별 상위 콘텐츠를 뽑아 편성/추천 전략에 활용
+
+-- 5) 카테고리별 인기 콘텐츠 TOP 5
 WITH s AS (
   SELECT
     c.content_category,
     c.content_id,
     c.content_title,
-    COUNT(*) FILTER (WHERE e.event_type = 'click') AS clicks,
-    COUNT(*) FILTER (WHERE e.event_type IN ('like', 'comment', 'share', 'bookmark')) AS engagements,
-    (1.0 * COUNT(*) FILTER (WHERE e.event_type = 'click')
-     + 2.0 * COUNT(*) FILTER (WHERE e.event_type = 'like')
-     + 3.0 * COUNT(*) FILTER (WHERE e.event_type = 'comment')
-     + 4.0 * COUNT(*) FILTER (WHERE e.event_type = 'share')
-     + 1.5 * COUNT(*) FILTER (WHERE e.event_type = 'bookmark')) AS popularity_score
-  FROM analytics.fact_user_events e
-  JOIN analytics.dim_content c ON c.content_id = e.content_id
-  WHERE e.event_date >= CURRENT_DATE - INTERVAL '29 days'
+    COUNT(*) FILTER (WHERE et.event_type_code = 'click') AS clicks,
+    COUNT(*) FILTER (WHERE et.event_type_code IN ('like', 'comment', 'share', 'bookmark')) AS engagements,
+    (
+      1.0 * COUNT(*) FILTER (WHERE et.event_type_code = 'click')
+      + 2.0 * COUNT(*) FILTER (WHERE et.event_type_code = 'like')
+      + 3.0 * COUNT(*) FILTER (WHERE et.event_type_code = 'comment')
+      + 4.0 * COUNT(*) FILTER (WHERE et.event_type_code = 'share')
+      + 1.5 * COUNT(*) FILTER (WHERE et.event_type_code = 'bookmark')
+    ) AS popularity_score
+  FROM analytics.fact_events f
+  JOIN analytics.dim_event_types et
+    ON f.event_type_sk = et.event_type_sk
+  JOIN analytics.dim_contents c
+    ON f.content_sk = c.content_sk
+  WHERE f.event_date >= CURRENT_DATE - INTERVAL '29 days'
   GROUP BY c.content_category, c.content_id, c.content_title
 ), r AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY content_category ORDER BY popularity_score DESC, clicks DESC) AS rk
+  SELECT
+    *,
+    ROW_NUMBER() OVER (
+      PARTITION BY content_category
+      ORDER BY popularity_score DESC, clicks DESC
+    ) AS rk
   FROM s
 )
-SELECT content_category, content_id, content_title, clicks, engagements, popularity_score
+SELECT
+  content_category,
+  content_id,
+  content_title,
+  clicks,
+  engagements,
+  popularity_score
 FROM r
 WHERE rk <= 5
 ORDER BY content_category, rk;
