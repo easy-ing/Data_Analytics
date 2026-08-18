@@ -1,11 +1,35 @@
 # 사용자 행동 로그 기반 콘텐츠 분석 시스템
 
-사용자 행동 로그를 기반으로 콘텐츠 성과를 분석하는 데이터 파이프라인 프로젝트입니다.  
-네이버 Analytics Engineer 인턴 지원을 위해 아래 역량을 보여주는 데 초점을 맞췄습니다.
+프로젝트 목적
+- 사용자 행동 로그를 기반으로 콘텐츠 성과를 분석하는 엔드투엔드 데이터 파이프라인을 구현합니다. 이 프로젝트는 이벤트 생성 → 적재 → 차원/팩트 기반 데이터 모델링 → SQL 기반 KPI 산출 → 간단한 API를 통한 지표 조회까지 전체 흐름을 포함합니다.
 
-- 데이터 기반 문제 해결
-- SQL 분석 역량
-- 데이터 모델링(fact/dimension) 역량
+세부 목표
+- 이벤트 로그 수집 및 표준화 포맷 정의 (예: view, click, like, share)
+- PostgreSQL 기반 데이터 웨어하우스(DW) 스키마 설계(Star Schema: dim / fact / mart)
+- 더미 데이터 생성 스크립트로 실전 수준의 테스트 데이터 확보(사용자 2,000명 / 콘텐츠 500개 / 이벤트 100,000건)
+- ETL 파이프라인(CSV 생성 → PostgreSQL 적재) 자동화 스크립트 제공
+- 핵심 지표(KPI) SQL 쿼리 제공: DAU, CTR, 평균 체류시간, 7일 재방문율, 카테고리별 인기콘텐츠 등
+- 간단한 REST API(uvicorn)로 엔드포인트 제공: 헬스 체크·이벤트 수집·주요 인사이트 조회
+
+산출물(Outputs)
+- DW 스키마 정의 파일: sql/03_dw_schema.sql
+- KPI 쿼리 모음: sql/02_kpi_queries.sql, sql/04_advanced_analytics.sql
+- 더미 데이터 생성 스크립트: etl/generate_dummy_data.py
+- 적재/ETL 스크립트: etl/load_to_postgres.py (및 load_csv_to_postgres.py)
+- 간단한 분석 API: backend/main.py
+- 문서: docs/* (데이터 딕셔너리, 프로젝트 흐름 등)
+
+성공 기준 / 검증 방법
+- 더미 데이터로 KPI 쿼리 실행 시 의미 있는(예상 범위 내) 지표가 도출된다.
+- ETL 스크립트를 통해 CSV → PostgreSQL 적재가 자동으로 수행된다.
+- mart 테이블(일별 요약) 생성 후 쿼리 응답 시간이 개선되는 것을 확인한다(예: 반복 조회 시).
+- 제공된 API로 DAU 등 핵심 지표를 조회할 수 있다.
+
+확장 및 운영 아이디어
+- Airflow / Prefect로 배치 오케스트레이션 구성
+- dbt로 모델링/테스트 자동화 (uniqueness, not null 등)
+- 모니터링 및 알림(데이터 파이프라인 실패 시 슬랙 알림)
+- 대시보드 연동 (Looker Studio / Grafana)
 
 ## 프로젝트 개요
 이 프로젝트는 이벤트 로그를 생성하고(PostgreSQL 적재), 차원/팩트 모델로 분석 가능한 형태로 구성한 뒤, 실무형 SQL로 KPI를 도출합니다.
