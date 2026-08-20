@@ -1,15 +1,26 @@
 # 사용자 행동 로그 기반 콘텐츠 분석 시스템
 
-간단한 소개
+## 목차
+- [간단한 소개](#간단한-소개)
+- [주요 내용(요약)](#주요-내용요약)
+- [빠른 시작](#빠른-시작)
+- [프로젝트 구조](#프로젝트-구조)
+- [핵심 파일](#핵심-파일)
+- [데이터 모델(요약)](#데이터-모델요약)
+- [성공 기준 / 검증](#성공-기준--검증)
+- [확장 아이디어](#확장-아이디어)
+- [기여 및 연락](#기여-및-연락)
+
+## 간단한 소개
 - 사용자 행동 로그(예: view, click, like, share)를 수집·처리·분석해 콘텐츠 성과 지표를 산출하는 엔드투엔드 데이터 파이프라인 프로젝트입니다.
 - 이벤트 생성 → 적재(Postgres) → 차원/팩트 기반 DW 설계 → KPI SQL 분석 → 간단한 API 제공까지 포함합니다.
 
-주요 내용(요약)
+## 주요 내용(요약)
 - 데이터 규모(더미): 사용자 2,000명 / 콘텐츠 500개 / 이벤트 100,000건
 - 핵심 지표: DAU, CTR, 평균 체류시간, 7일 재방문율, 카테고리별 인기 콘텐츠 등
 - 스택: Python, PostgreSQL, Docker, uvicorn
 
-빠른 시작
+## 빠른 시작
 1. 환경
 ```bash
 python3 -m venv .venv
@@ -38,7 +49,7 @@ python etl/load_to_postgres.py --raw-dir data/raw
 psql -h localhost -p 5432 -U postgres -d analytics -f sql/02_kpi_queries.sql
 ```
 
-프로젝트 구조
+## 프로젝트 구조
 ```
 naver-content-analytics/
 ├─ backend/                      # 간단한 API와 서비스 코드
@@ -54,7 +65,7 @@ naver-content-analytics/
 └─ README.md
 ```
 
-핵심 파일
+## 핵심 파일
 - sql/03_dw_schema.sql — DW(차원/팩트) 스키마 정의
 - sql/02_kpi_queries.sql — 기본 KPI 쿼리 모음
 - sql/04_advanced_analytics.sql — 고급 분석 쿼리
@@ -62,24 +73,23 @@ naver-content-analytics/
 - etl/load_to_postgres.py — CSV → Postgres 적재 진입점
 - backend/main.py — 간단한 REST API (GET /health, POST /events, GET /insights/dau)
 
-데이터 모델(요약)
+## 데이터 모델(요약)
 - analytics.dim_users
 - analytics.dim_contents
 - analytics.dim_event_types
 - analytics.fact_events (월별 range partition 권장)
 - analytics.mart_content_daily (일별 요약 마트)
 
-성공 기준 / 검증
+## 성공 기준 / 검증
 - 더미 데이터로 KPI 실행 시 합리적 범위의 지표 산출
 - ETL 자동화로 CSV → PostgreSQL 적재 정상 동작
 - mart 테이블 도입으로 반복 조회 성능 개선 확인
 - API로 핵심 지표 조회 가능
 
-확장 아이디어
+## 확장 아이디어
 - Airflow/Prefect로 오케스트레이션
 - dbt로 모델링·테스트 자동화
 - 모니터링/알림(예: 실패 시 Slack) 및 대시보드 연동
 
-기여 및 연락
+## 기여 및 연락
 - 이 레포는 학습/연구 목적으로 관리됩니다. 개선사항이나 제안은 PR 또는 Issue로 남겨주세요.
-
