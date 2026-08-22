@@ -1,3 +1,8 @@
+[![CI](https://github.com/easy-ing/Data_Analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/easy-ing/Data_Analytics/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
+[![Release](https://img.shields.io/github/v/release/easy-ing/Data_Analytics?label=release)](https://github.com/easy-ing/Data_Analytics/releases/latest)
+
 # 사용자 행동 로그 기반 콘텐츠 분석 시스템
 
 ## 목차
