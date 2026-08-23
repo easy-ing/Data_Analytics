@@ -9,6 +9,7 @@
 - [간단한 소개](#간단한-소개)
 - [주요 내용(요약)](#주요-내용요약)
 - [빠른 시작](#빠른-시작)
+- [개발 환경 (pre-commit)](#개발-환경-pre-commit)
 - [프로젝트 구조](#프로젝트-구조)
 - [핵심 파일](#핵심-파일)
 - [데이터 모델(요약)](#데이터-모델요약)
@@ -52,6 +53,36 @@ python etl/load_to_postgres.py --raw-dir data/raw
 6. KPI 실행(예)
 ```bash
 psql -h localhost -p 5432 -U postgres -d analytics -f sql/02_kpi_queries.sql
+```
+
+## 개발 환경 (pre-commit)
+이 repo는 코드 스타일과 정적분석을 자동화하기 위해 pre-commit 훅과 기본 포맷터/린터를 구성해 두었습니다. 로컬 개발 환경에서 아래를 한 번만 설정하면 이후 커밋시 자동으로 포맷/검사가 실행됩니다.
+
+설치 및 설정
+```bash
+# 가상환경 활성화 후
+pip install -r requirements-dev.txt
+# pre-commit 훅 설치
+pre-commit install
+# (선택) 모든 파일에 대해 한 번 포맷/검사 실행
+pre-commit run --all-files
+```
+
+주요 훅
+- black: 코드 포맷팅
+- isort: import 정렬
+- ruff: 정적분석(Lint) 및 일부 자동수정
+- 기타: trailing-whitespace, end-of-file-fixer, yaml 체크
+
+CI 연동
+- GitHub Actions 워크플로(.github/workflows/ci.yml)에서 lint·format·test를 실행합니다. PR 전에 로컬에서 pre-commit을 실행하면 CI 실패 가능성을 줄일 수 있습니다.
+
+문제가 발생하면
+- pre-commit이 실행되지 않거나 에러가 발생하면, 아래를 실행해 수동으로 검사하고 수정하세요.
+```bash
+ruff check . --fix
+isort .
+black .
 ```
 
 ## 프로젝트 구조
