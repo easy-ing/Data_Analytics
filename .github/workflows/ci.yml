@@ -61,5 +61,14 @@ jobs:
       - name: Run black check
         run: black --check .
 
+      - name: Run Great Expectations checks
+        run: |
+          if [ -f data/raw/events_sample.csv ]; then
+            echo "Running Great Expectations checks against data/raw/events_sample.csv"
+            python scripts/run_ge_checks.py data/raw/events_sample.csv
+          else
+            echo "No sample CSV found at data/raw/events_sample.csv — skipping GE checks"
+          fi
+
       - name: Run tests
         run: pytest -q
