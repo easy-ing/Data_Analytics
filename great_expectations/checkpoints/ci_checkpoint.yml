@@ -1,0 +1,11 @@
+name: ci_checkpoint
+config_version: 1
+class_name: Checkpoint
+template_name: default
+validations:
+  - batch_request:
+      datasource_name: pandas_filesystem
+      data_connector_name: default_inferred_data_connector_name
+      data_asset_name: data/raw/events_sample.csv
+    expectation_suite_name: events_suite
+action_list: []

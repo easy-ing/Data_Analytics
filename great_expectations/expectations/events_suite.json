@@ -1,0 +1,27 @@
+{
+  "data_asset_type": "Dataset",
+  "expectation_suite_name": "events_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "id" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": { "column": "event_type", "value_set": ["view", "click", "like", "share"] }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "user_id" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "content_id" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": { "column": "timestamp", "regex": ".+" }
+    }
+  ],
+  "meta": { "great_expectations_version": "3.x" }
+}
