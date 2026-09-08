@@ -97,7 +97,21 @@
     {
       "expectation_type": "expect_column_values_to_match_regex",
       "kwargs": { "column": "metadata", "regex": "^\\{.*\\}$" }
+    },
+
+    {
+      "expectation_type": "expect_column_values_to_be_of_type",
+      "kwargs": { "column": "user_id", "type_": "INTEGER" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_of_type",
+      "kwargs": { "column": "content_id", "type_": "INTEGER" }
+    },
+
+    {
+      "expectation_type": "expect_column_value_lengths_to_be_between",
+      "kwargs": { "column": "event_id", "min_value": 32, "max_value": 32 }
     }
   ],
-  "meta": { "great_expectations_version": "3.x", "notes": "Expanded to match generate_dummy_data.py output schema" }
+  "meta": { "great_expectations_version": "3.x", "notes": "Expanded to match generate_dummy_data.py output schema; type and length checks added" }
 }
