@@ -61,6 +61,13 @@ jobs:
       - name: Run black check
         run: black --check .
 
+      - name: Generate dummy data for GE checks
+        run: |
+          python naver-content-analytics/etl/generate_dummy_data.py --output-dir data/raw --seed 42
+          if [ -f data/raw/events.csv ]; then
+            cp data/raw/events.csv data/raw/events_sample.csv
+          fi
+
       - name: Run Great Expectations checks
         run: |
           if [ -f data/raw/events_sample.csv ]; then
