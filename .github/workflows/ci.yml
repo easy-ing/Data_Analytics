@@ -69,13 +69,60 @@ jobs:
           fi
 
       - name: Run Great Expectations checks
+        id: ge
+        continue-on-error: true
         run: |
           if [ -f data/raw/events_sample.csv ]; then
             echo "Running Great Expectations checks against data/raw/events_sample.csv"
-            python scripts/run_ge_checks.py data/raw/events_sample.csv
+            python scripts/run_ge_checks.py data/raw/events_sample.csv build/ge_validation_$(date -u +"%Y%m%dT%H%M%SZ").json || RC=$?
           else
             echo "No sample CSV found at data/raw/events_sample.csv — skipping GE checks"
+            RC=0
           fi
+          echo "rc=${RC:-0}" >> $GITHUB_OUTPUT
+
+      - name: Upload GE validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ge-validation
+          path: build/ge_validation_*.json
+
+      - name: Post GE failure summary as PR comment
+        if: steps.ge.outputs.rc != '0' && github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = 'build';
+            const files = fs.readdirSync(path).filter(f => f.startsWith('ge_validation_')).sort().reverse();
+            if (files.length === 0) {
+              core.info('No GE artifact found');
+              return;
+            }
+            const file = path + '/' + files[0];
+            const content = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const counts = content.summary.counts;
+            let body = `⚠️ Great Expectations validation failed: ${counts.failed}/${counts.total} failed.\n\n`;
+            body += 'Failed expectations (up to 5):\n';
+            let shown = 0;
+            for (const r of content.results) {
+              if (r.success === false) {
+                shown++;
+                body += `- ${r.expectation_type} with kwargs=${JSON.stringify(r.kwargs)}\n`;
+                if (r.unexpected_samples) {
+                  body += `  unexpected_samples: ${JSON.stringify(r.unexpected_samples.slice(0,2))}\n`;
+                }
+                if (shown >= 5) break;
+              }
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
 
       - name: Run tests
         run: pytest -q
