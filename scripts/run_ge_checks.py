@@ -4,6 +4,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import great_expectations as ge
@@ -14,12 +15,74 @@ def load_expectations(path: str) -> dict:
         return json.load(f)
 
 
-def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None) -> int:
+def _serialize(obj: Any) -> Any:
+    # Fallback serializer for numpy / pandas types
+    try:
+        return json.loads(json.dumps(obj))
+    except Exception:
+        return str(obj)
+
+
+def _extract_unexpected_samples(res: dict, df: pd.DataFrame, max_samples: int = 5) -> list:
+    """Try to extract sample unexpected rows/values from a GE result dict.
+
+    Returns a list of row dicts or value samples (up to max_samples).
+    """
+    samples = []
+
+    result = res.get("result") if isinstance(res, dict) else None
+    if not isinstance(result, dict):
+        return samples
+
+    # common keys in GE result for unexpected items
+    # 1) unexpected_list (values)
+    unexpected_list = result.get("unexpected_list") or result.get("partial_unexpected_list")
+    if unexpected_list:
+        # If we have full row values or scalar values, return first N
+        for v in unexpected_list[:max_samples]:
+            samples.append(_serialize(v))
+        return samples
+
+    # 2) unexpected_index_list (row indices)
+    unexpected_idx = result.get("unexpected_index_list") or result.get("partial_unexpected_index_list")
+    if unexpected_idx and isinstance(unexpected_idx, (list, tuple)) and len(unexpected_idx) > 0:
+        # Clip to available indices
+        for i in unexpected_idx[:max_samples]:
+            try:
+                # If index is out-of-range for pandas positional, try iloc
+                row = df.iloc[int(i)].to_dict()
+            except Exception:
+                # Try label-based access
+                try:
+                    row = df.loc[i].to_dict()
+                except Exception:
+                    row = {"index": i}
+            samples.append({k: _serialize(v) for k, v in row.items()})
+        return samples
+
+    # 3) unexpected_count and maybe unexpected_values
+    unexpected_values = result.get("unexpected_values")
+    if unexpected_values:
+        for v in unexpected_values[:max_samples]:
+            samples.append(_serialize(v))
+        return samples
+
+    return samples
+
+
+def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None, max_samples: int = 5) -> int:
     df = pd.read_csv(csv_path)
     ge_df = ge.from_pandas(df)
 
     suite = load_expectations(suite_path)
     expectations = suite.get("expectations", [])
+
+    # dataset metadata
+    dataset_meta = {
+        "row_count": len(df),
+        "columns": list(df.columns),
+        "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+    }
 
     results = []
     for idx, exp in enumerate(expectations, start=1):
@@ -47,7 +110,16 @@ def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None)
                 success = bool(res)
                 details = None
 
-            record.update({"success": bool(success), "result": details, "raw": res})
+            record.update({"success": bool(success), "result": details, "raw": _serialize(res)})
+
+            # extract unexpected samples if present
+            try:
+                samples = _extract_unexpected_samples(res, df, max_samples=max_samples)
+                if samples:
+                    record["unexpected_samples"] = samples
+            except Exception as e:
+                record.setdefault("notes", []).append(f"failed_sample_extraction: {e}")
+
             print(f"{exp_type} -> {'PASS' if success else 'FAIL'}")
         except Exception as e:
             tb = traceback.format_exc()
@@ -63,6 +135,7 @@ def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None)
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "csv_path": csv_path,
         "suite_path": suite_path,
+        "dataset": dataset_meta,
         "counts": {"total": len(results), "passed": passed, "failed": failed, "skipped": skipped},
     }
 
@@ -77,11 +150,12 @@ def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None)
         artifact_path = Path(artifact_path)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Use default=str to help serialize pandas/numpy types
     with artifact_path.open("w", encoding="utf-8") as f:
-        json.dump(output, f, ensure_ascii=False, indent=2)
+        json.dump(output, f, ensure_ascii=False, indent=2, default=str)
 
     print("\nGE validation summary:")
-    print(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2, default=str))
 
     if failed > 0:
         print("\nFailed expectations (up to 10 shown):")
@@ -96,10 +170,14 @@ def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None)
                 print(f"- {etype} kwargs={kws}")
                 if err:
                     print(f"  error: {err}")
-                if res is not None:
+                if r.get("unexpected_samples"):
+                    print(f"  unexpected_samples (up to {max_samples}):")
+                    for s in r.get("unexpected_samples"):
+                        print(f"    - {s}")
+                elif res is not None:
                     # Try to print a concise part of result
                     try:
-                        snippet = json.dumps(res)[:1000]
+                        snippet = json.dumps(res, default=str)[:1000]
                     except Exception:
                         snippet = str(res)
                     print(f"  result: {snippet}")
@@ -110,7 +188,7 @@ def run_checks(csv_path: str, suite_path: str, artifact_path: str | None = None)
     artifact_rel = artifact_path.as_posix()
     print(f"\nValidation artifact written to: {artifact_rel}")
 
-    # Exit code: 0 success, 1 failure
+    # Exit code: 0 success, 1 failure, 2 misuse
     return 0 if failed == 0 else 1
 
 
